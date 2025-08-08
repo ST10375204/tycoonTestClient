@@ -168,12 +168,12 @@ class MainActivity : AppCompatActivity() {
                     when {
                         trimmed.startsWith("yourId:") -> {
                             playerId = trimmed.removePrefix("yourId:").trim()
-                            println("💡 Assigned playerId: $playerId")
+                            println("Assigned playerId: $playerId")
 
                             // Don't try to check turnId here yet because it might be null
                             runOnUiThread {
                                 if (currentTurn != null && playerId == currentTurn) {
-                                    println("✅ It's your turn (late match)! Showing Play button.")
+                                    println("It's your turn (late match)! Showing Play button.")
                                     binding.sendPlayButton.visibility = View.VISIBLE
                                 } else {
                                     println("⏳ Waiting for nextPlayer info...")
@@ -185,18 +185,18 @@ class MainActivity : AppCompatActivity() {
 
                         trimmed.startsWith("nextPlayer:") -> {
                             currentTurn = trimmed.removePrefix("nextPlayer:").trim()
-                            println("🌀 Received nextPlayer: $currentTurn")
+                            println("Received nextPlayer: $currentTurn")
 
                             runOnUiThread {
                                 val myId = playerId?.trim()
                                 val turnId = currentTurn?.trim()
-                                println("🔍 Comparing myId=[$myId] to turnId=[$turnId]")
+                                println("Comparing myId=[$myId] to turnId=[$turnId]")
 
                                 if (!myId.isNullOrBlank() && myId == turnId) {
-                                    println("✅ It's your turn! Showing Play button.")
+                                    println("It's your turn! Showing Play button.")
                                     binding.sendPlayButton.visibility = View.VISIBLE
                                 } else {
-                                    println("⛔ Not your turn. Hiding Play button.")
+                                    println("Not your turn. Hiding Play button.")
                                     binding.sendPlayButton.visibility = View.INVISIBLE
                                 }
                             }
