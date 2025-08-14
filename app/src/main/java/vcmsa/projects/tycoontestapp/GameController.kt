@@ -1,84 +1,85 @@
 package vcmsa.projects.tycoontestapp
 
-class GameController {
+class GameController(private val logger: ((String) -> Unit)? = null) {
+
     var revolution: Boolean = false
         set(value) {
             field = value
-            println("Revolution mode is now ${if (value) "ON" else "OFF"}.")
+            log("Revolution mode is now ${if (value) "ON" else "OFF"}.")
         }
 
     private val cardStrengths: Array<String>
-        get() = if (revolution) //if false joker high, if true joker low
+        get() = if (revolution)
             arrayOf("Joker", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2")
         else
             arrayOf("3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2", "Joker")
 
-
     private fun getCardValue(card: String): String {
-        return when {
-            card == "Joker" -> "Joker"
-            card.length > 2 && card.startsWith("10") -> "10"
+        return when (card) {
+            "RJ", "BJ", "Joker" -> "Joker" // treat both jokers as the same for value comparisons
+            "10S", "10H", "10D", "10C" -> "10"
             else -> card.first().toString()
         }
     }
 
-
     private fun getCardIndex(card: String): Int {
-        return cardStrengths.indexOf(getCardValue(card))
+        val value = getCardValue(card)
+        val idx = cardStrengths.indexOf(value)
+        if (idx == -1) log("Warning: '$value' not found in cardStrengths: ${cardStrengths.joinToString()}")
+        return idx
     }
 
     fun isValidPlay(playedHand: List<String>, pot: List<String>): Boolean {
 
-        if (pot.isEmpty()){
-            println("empty pot, valid")
+        val basePlayed = getBaseValue(playedHand)
+        if (!validateHand(playedHand, basePlayed)) {
+            log("Invalid hand played -- check play")
+            return false
+        }
+
+        if (pot.isEmpty()) {
+            log("Empty pot, valid")
             return true
         }
 
         if (playedHand.size != pot.size) {
-            println("Played hand and pot must have the same number of cards.")
+            log("Played hand and pot must have the same number of cards.")
             return false
         }
 
         if (playedHand.size == 1) {
             val played = playedHand[0]
             val potCard = pot[0]
-            println("Single card played: $played, Pot card: $potCard")
+            log("Single card played: $played, Pot card: $potCard")
             return if (revolution)
-                getCardIndex(played) > getCardIndex(potCard)
-            else
                 getCardIndex(played) < getCardIndex(potCard)
+            else
+                getCardIndex(played) > getCardIndex(potCard)
         }
 
-        val basePlayed = getBaseValue(playedHand)
-        if (!validateHand(playedHand, basePlayed)) {
-            println("Invalid hand played --check play")
-            return false
-        }
+        val basePot = pot.asReversed()
+            .firstOrNull { it.isNotEmpty() && getCardValue(it) != null && getCardValue(it) != "Joker" }
+            ?.let { getCardValue(it) }
+            ?: "Error"
 
-        val basePot = pot.firstOrNull { getCardValue(it) != "Joker" }?.let { getCardValue(it) } ?: "Joker"
+        log("Valid hand played, Base = $basePlayed")
+        log("Base Played: $basePlayed, Base Pot: $basePot")
+        log("Revolution mode: $revolution")
+        log("cardStrengths: ${cardStrengths.joinToString(", ")}")
+        log("basePlayed raw: '$basePlayed'")
+        log("basePot raw: '$basePot'")
+        log("basePlayed index: ${getCardIndex(basePlayed)}")
+        log("basePot index: ${getCardIndex(basePot)}")
 
-        println("Valid hand played, Base = $basePlayed")
-        println("Base Played: $basePlayed, Base Pot: $basePot")
-
-        println("Revolution mode: $revolution")
-        println("cardStrengths: ${cardStrengths.joinToString(", ")}")
-        println("basePlayed raw: '$basePlayed'")
-        println("basePot raw: '$basePot'")
-        println("basePlayed index: ${getCardIndex(basePlayed)}")
-        println("basePot index: ${getCardIndex(basePot)}")
-        println("Comparing played to pot: ")
         val playedIndex = getCardIndex(basePlayed)
         val potIndex = getCardIndex(basePot)
-
         val isValid = if (revolution)
             playedIndex < potIndex
         else
             playedIndex > potIndex
 
-        println("Comparing played to pot: $playedIndex ${if (revolution) "<" else ">"} $potIndex = $isValid")
-
-        println("hit default")
-        return isValid //default case
+        log("Comparing played to pot: $playedIndex ${if (revolution) "<" else ">"} $potIndex = $isValid")
+        return isValid
     }
 
     private fun getBaseValue(cards: List<String>): String {
@@ -90,17 +91,33 @@ class GameController {
         for (card in hand) {
             val value = getCardValue(card)
             if (value == "Joker" || value == baseValue) continue
-            println("Invalid card $card — does not match baseValue $baseValue.")
+            log("Invalid card $card — does not match baseValue $baseValue.")
             return false
         }
-        println("Hand validated.")
+        log("Hand validated.")
         return true
     }
 
-    // Kotlin wrapper for MainActivity use
+    fun removePlayedCards(hand: MutableList<String>, playedHand: List<String>) {
+        for (card in playedHand) {
+            hand.remove(card)
+        }
+    }
+
     fun isValidPlayAgainstPot(playedHand: List<String>, potState: List<List<String>>): Boolean {
-        val lastPotHand = potState.lastOrNull() ?: emptyList()
+        val lastPotHand = potState.asReversed()
+            .firstOrNull { it.isNotEmpty() } ?: emptyList()
         return isValidPlay(playedHand, lastPotHand)
     }
 
+    fun displayCard(card: String): String {
+        return when (card) {
+            "RJ", "BJ" -> "Joker"
+            else -> card
+        }
+    }
+
+    private fun log(message: String) {
+        logger?.invoke(message) ?: println(message)
+    }
 }
