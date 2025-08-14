@@ -14,21 +14,100 @@ class GameController(private val logger: ((String) -> Unit)? = null) {
         else
             arrayOf("3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2", "Joker")
 
-    private fun getCardValue(card: String): String {
-        return when (card) {
-            "RJ", "BJ", "Joker" -> "Joker" // treat both jokers as the same for value comparisons
-            "10S", "10H", "10D", "10C" -> "10"
-            else -> card.first().toString()
+    /**
+     * Robustly parse the card's rank value.
+     * Returns normalized rank strings like "3","4",...,"10","J","Q","K","A","2","Joker".
+     *
+     * Accepts a variety of inputs:
+     *  - "10H", "10h", "10_H", "10-H" => "10"
+     *  - "QS", "qS" => "Q"
+     *  - "RJ","BJ","jrj","joker" => "Joker"
+     *  - "TH" or "T H" will treat 'T' as '10'
+     */
+    private fun getCardValue(cardRaw: String?): String {
+        if (cardRaw == null) return "Unknown"
+
+        val s = cardRaw.trim()
+
+        if (s.isEmpty()) return "Unknown"
+
+        // Quick joker checks (many possible naming variations)
+        val lower = s.lowercase()
+        val jokerVariants = listOf("rj", "bj", "jrj", "jbj", "joker", "joker_red", "joker_black", "face_joker_red", "face_joker_black", "jokerred", "jokerblack")
+        if (jokerVariants.any { lower.contains(it) }) return "Joker"
+
+        // Remove any non-alphanumeric (keeps letters and digits only)
+        val alnum = s.filter { it.isLetterOrDigit() }
+
+        if (alnum.isEmpty()) return "Unknown"
+
+        // If the last character is a suit letter (S,H,D,C) then rank portion is everything before it.
+        // Otherwise try to interpret full string as rank (some art-names might be rank_4 etc)
+        val last = alnum.last()
+        val possibleSuits = setOf('S', 's', 'H', 'h', 'D', 'd', 'C', 'c')
+        val rankPart = if (possibleSuits.contains(last)) {
+            alnum.substring(0, alnum.length - 1)
+        } else {
+            // Could be "10", "T", "ACE", "A", "rank_4", etc. Try to strip common prefixes/suffixes:
+            alnum
         }
+
+        val rankNormalized = when {
+            rankPart.isEmpty() -> {
+                // maybe single-char like "9" or just suit - fallback
+                alnum
+            }
+            // Accept "T" or "t" as 10
+            rankPart.equals("T", ignoreCase = true) -> "10"
+            // Accept spelled-out ranks: "A", "J", "Q", "K"
+            rankPart.equals("A", ignoreCase = true) -> "A"
+            rankPart.equals("J", ignoreCase = true) -> "J"
+            rankPart.equals("Q", ignoreCase = true) -> "Q"
+            rankPart.equals("K", ignoreCase = true) -> "K"
+            // numeric 2..10
+            rankPart.toIntOrNull() != null -> {
+                val n = rankPart.toInt()
+                if (n == 1) {
+                    // guard: if someone used "1" meaning "10"
+                    log("Note: parsed '1' as '10' for card '$cardRaw'")
+                    "10"
+                } else n.toString()
+            }
+            // Accept common textual forms like "TEN", "TENRED", "rank_10", etc.
+            rankPart.matches(Regex("(?i).*10.*")) || rankPart.equals("TEN", ignoreCase = true) -> "10"
+            // If it looks like rank_a or rank_j
+            rankPart.matches(Regex("(?i).*a.*")) -> "A"
+            rankPart.matches(Regex("(?i).*j(ack)?.*")) -> "J"
+            rankPart.matches(Regex("(?i).*q(ueen)?.*")) -> "Q"
+            rankPart.matches(Regex("(?i).*k(ing)?.*")) -> "K"
+            // fallback: first character (uppercase) — this is last resort
+            else -> rankPart.first().uppercaseChar().toString()
+        }
+
+        // Final normalization: map variants like "1" -> "10", "0" -> unknown
+        val finalRank = when (rankNormalized.uppercase()) {
+            "1" -> "10"
+            "T" -> "10"
+            else -> rankNormalized.uppercase()
+        }
+
+        return finalRank
     }
 
     private fun getCardIndex(card: String): Int {
         val value = getCardValue(card)
         val idx = cardStrengths.indexOf(value)
-        if (idx == -1) log("Warning: '$value' not found in cardStrengths: ${cardStrengths.joinToString()}")
+        if (idx == -1) {
+            log("Warning: parsed value '$value' for card '$card' not found in cardStrengths: ${cardStrengths.joinToString()}")
+        }
         return idx
     }
 
+    /**
+     * Validate if a played hand is allowed against the pot.
+     * Keeps previous logic: must be same count as pot (unless pot empty), all non-joker cards share base rank,
+     * and ranking comparisons respect revolution flag.
+     */
     fun isValidPlay(playedHand: List<String>, pot: List<String>): Boolean {
 
         val basePlayed = getBaseValue(playedHand)
@@ -51,14 +130,18 @@ class GameController(private val logger: ((String) -> Unit)? = null) {
             val played = playedHand[0]
             val potCard = pot[0]
             log("Single card played: $played, Pot card: $potCard")
-            return if (revolution)
-                getCardIndex(played) < getCardIndex(potCard)
-            else
-                getCardIndex(played) > getCardIndex(potCard)
+            val playedIdx = getCardIndex(played)
+            val potIdx = getCardIndex(potCard)
+            if (playedIdx == -1 || potIdx == -1) {
+                log("Index lookup failed for single-card comparison.")
+                return false
+            }
+            return if (revolution) playedIdx < potIdx else playedIdx > potIdx
         }
 
+        // For multi-card compare the base rank (first non-joker)
         val basePot = pot.asReversed()
-            .firstOrNull { it.isNotEmpty() && getCardValue(it) != null && getCardValue(it) != "Joker" }
+            .firstOrNull { it.isNotEmpty() && getCardValue(it) != "Joker" }
             ?.let { getCardValue(it) }
             ?: "Error"
 
@@ -68,23 +151,20 @@ class GameController(private val logger: ((String) -> Unit)? = null) {
         log("cardStrengths: ${cardStrengths.joinToString(", ")}")
         log("basePlayed raw: '$basePlayed'")
         log("basePot raw: '$basePot'")
-        log("basePlayed index: ${getCardIndex(basePlayed)}")
-        log("basePot index: ${getCardIndex(basePot)}")
-
         val playedIndex = getCardIndex(basePlayed)
         val potIndex = getCardIndex(basePot)
-        val isValid = if (revolution)
-            playedIndex < potIndex
-        else
-            playedIndex > potIndex
-
+        if (playedIndex == -1 || potIndex == -1) {
+            log("Index lookup failed for multi-card comparison.")
+            return false
+        }
+        val isValid = if (revolution) playedIndex < potIndex else playedIndex > potIndex
         log("Comparing played to pot: $playedIndex ${if (revolution) "<" else ">"} $potIndex = $isValid")
         return isValid
     }
 
     private fun getBaseValue(cards: List<String>): String {
-        val base = cards.firstOrNull { getCardValue(it) != "Joker" } ?: "Joker"
-        return getCardValue(base)
+        val baseCard = cards.firstOrNull { getCardValue(it) != "Joker" } ?: "Joker"
+        return getCardValue(baseCard)
     }
 
     private fun validateHand(hand: List<String>, baseValue: String): Boolean {
