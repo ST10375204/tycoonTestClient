@@ -36,6 +36,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
 
     private var potCardCodes = CopyOnWriteArrayList<String>()
     private var potCards = CopyOnWriteArrayList<Bitmap>()
+    private var potGroups = CopyOnWriteArrayList<List<String>>()
 
     private val selectedOrder = CopyOnWriteArrayList<Int>()
 
@@ -112,8 +113,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         needsRedraw.set(true)
         selectionListener?.onSelectionChanged(getSelectedCardCodes())
     }
-
     fun setPotFromCodes(nestedCodes: List<List<String>>) {
+        potGroups.clear()
+        potGroups.addAll(nestedCodes.map { it.toList() })
+
         potCardCodes.clear()
         potCardCodes.addAll(nestedCodes.flatten())
 
@@ -121,9 +124,9 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         for (code in potCardCodes) {
             potCards.add(getOrCreateCardBitmap(code))
         }
-
         needsRedraw.set(true)
     }
+
 
     fun clearPot() {
         potCardCodes.clear()
@@ -239,38 +242,44 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         paint.color = Color.argb(170, 60, 60, 60)
         canvas.drawOval(innerRect, paint)
 
-        if (potCards.isEmpty()) return
+        if (potGroups.isEmpty()) return
 
         val scale = 0.9f
         val drawW = cardWidth * scale
         val drawH = cardHeight * scale
 
-        val grouped = potCardCodes.withIndex().groupBy({ it.value }, { it.index })
-        for ((origIndex, code) in potCardCodes.withIndex()) {
-            val bmp = potCards.getOrNull(origIndex) ?: continue
-            val jitter = stableJitter(code, origIndex)
-            val angle = jitter.first
-            val dx = jitter.second.first * 0.6f
-            val dy = jitter.second.second * 0.6f
+        var groupIndex = 0
+        for (group in potGroups) {
+            // jitter the *whole group* together
+            val jitter = stableJitter(group.joinToString(""), groupIndex)
+            val baseAngle = jitter.first
+            val dx = jitter.second.first
+            val dy = jitter.second.second
 
-            val duplicates = grouped[code] ?: listOf()
-            val posInGroup = duplicates.indexOf(origIndex).coerceAtLeast(0)
-            val dupOffsetX = posInGroup * 8f
-            val dupOffsetY = -posInGroup * 6f
-            val gx = cx + dx + dupOffsetX
-            val gy = cy + dy + dupOffsetY
+            val groupCenterX = cx + dx
+            val groupCenterY = cy + dy
 
-            canvas.save()
-            canvas.translate(gx, gy)
-            canvas.rotate(angle)
-            val src = Rect(0, 0, bmp.width, bmp.height)
-            val dst = RectF(-drawW/2f, -drawH/2f, drawW/2f, drawH/2f)
-            paint.alpha = 255
-            canvas.drawBitmap(bmp, src, dst, paint)
-            canvas.restore()
+            // spread out inside group
+            val spacing = drawW * 0.4f
+            val groupWidth = (group.size - 1) * spacing
+            val startX = groupCenterX - groupWidth / 2f
+
+            for ((i, code) in group.withIndex()) {
+                val bmp = potCards.getOrNull(potCardCodes.indexOf(code)) ?: continue
+                val gx = startX + i * spacing
+                val gy = groupCenterY
+
+                canvas.save()
+                canvas.translate(gx, gy)
+                canvas.rotate(baseAngle)
+                val src = Rect(0, 0, bmp.width, bmp.height)
+                val dst = RectF(-drawW/2f, -drawH/2f, drawW/2f, drawH/2f)
+                paint.alpha = 255
+                canvas.drawBitmap(bmp, src, dst, paint)
+                canvas.restore()
+            }
+            groupIndex++
         }
-
-        paint.style = Paint.Style.FILL
     }
 
     private fun stableJitter(code: String, index: Int): Pair<Float, Pair<Float, Float>> {
