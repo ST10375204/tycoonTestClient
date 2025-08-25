@@ -17,6 +17,9 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
 
     // --- Render thread state ---
     @Volatile private var running = false
+    @Volatile private var roundMessage: String? = null
+    @Volatile private var roundMessageShownAt: Long = 0
+
     private var thread: Thread? = null
     private val needsRedraw = AtomicBoolean(false)
 
@@ -82,7 +85,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         })
     }
 
-    // ---------- Public API ----------
+    // ---------- Public ----------
     fun setPlayersFromTurnOrder(turnOrder: List<String>, localId: String?, counts: Map<String, Int>) {
         if (localId == null) {
             orderedPlayers = turnOrder.toList()
@@ -143,6 +146,13 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         needsRedraw.set(true)
     }
 
+    fun showRoundMessage(msg: String) {
+        roundMessage = msg
+        roundMessageShownAt = System.currentTimeMillis()
+        needsRedraw.set(true)
+    }
+
+
     // ---------- Input ----------
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.action == MotionEvent.ACTION_DOWN) {
@@ -192,6 +202,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     }
 
     private fun drawGame(canvas: Canvas) {
+
         if (tableBitmap == null || tableBitmapWidth != width || tableBitmapHeight != height) {
             tableBitmap = loadDrawableBitmapFromAny(listOf("table", "table_bg", "felt_table", "table_image"), width, height, preserveAspect = true)
             tableBitmapWidth = width
@@ -206,6 +217,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
 
         drawPotStyled(canvas)
         drawPlayersAroundTable(canvas)
+        drawRoundMessage(canvas)
 
         val handY = height - cardBaseY
         paint.alpha = 255
@@ -225,6 +237,26 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         val totalWidth = ((numCards - 1) * cardSpacing) + cardWidth
         return ((width - totalWidth) / 2f).toInt()
     }
+
+    //display round
+    private fun drawRoundMessage(canvas: Canvas) {
+        val msg = roundMessage ?: return
+        val elapsed = System.currentTimeMillis() - roundMessageShownAt
+        if (elapsed > 3000) { // disappear after 3 seconds
+            roundMessage = null
+            return
+        }
+
+        val cx = width / 2f
+        val cy = height / 2f
+        paint.textAlign = Paint.Align.CENTER
+        paint.textSize = 64f
+        paint.color = Color.WHITE
+        paint.setShadowLayer(6f, 2f, 2f, Color.BLACK)
+        canvas.drawText(msg, cx, cy, paint)
+        paint.clearShadowLayer()
+    }
+
 
     // ---------- Pot styling ----------
     private fun drawPotStyled(canvas: Canvas) {

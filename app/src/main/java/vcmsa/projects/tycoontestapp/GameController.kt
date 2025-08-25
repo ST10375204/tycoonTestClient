@@ -84,7 +84,6 @@ class GameController(private val logger: ((String) -> Unit)? = null) {
             else -> rankPart.first().uppercaseChar().toString()
         }
 
-        // Final normalization: map variants like "1" -> "10", "0" -> unknown
         val finalRank = when (rankNormalized.uppercase()) {
             "1" -> "10"
             "T" -> "10"
@@ -105,8 +104,7 @@ class GameController(private val logger: ((String) -> Unit)? = null) {
 
     /**
      * Validate if a played hand is allowed against the pot.
-     * Keeps previous logic: must be same count as pot (unless pot empty), all non-joker cards share base rank,
-     * and ranking comparisons respect revolution flag.
+         and ranking comparisons respect revolution flag.
      */
     fun isValidPlay(playedHand: List<String>, pot: List<String>): Boolean {
 
@@ -136,8 +134,19 @@ class GameController(private val logger: ((String) -> Unit)? = null) {
                 log("Index lookup failed for single-card comparison.")
                 return false
             }
+
+            // Robust 3♠ vs Joker rule: detect rank and suit with normalization
+            val playedValue = getCardValue(played)
+            val potValue = getCardValue(potCard)
+            val playedSuit = getSuitChar(played)
+            if (playedValue == "3" && playedSuit == 'S' && potValue == "Joker") {
+                log("Special rule: 3♠ beats Joker (single-card).")
+                return true
+            }
+
             return if (revolution) playedIdx < potIdx else playedIdx > potIdx
         }
+
 
         // For multi-card compare the base rank (first non-joker)
         val basePot = pot.asReversed()
@@ -166,6 +175,13 @@ class GameController(private val logger: ((String) -> Unit)? = null) {
         val baseCard = cards.firstOrNull { getCardValue(it) != "Joker" } ?: "Joker"
         return getCardValue(baseCard)
     }
+    private fun getSuitChar(cardRaw: String?): Char? {
+        if (cardRaw == null) return null
+        val alnum = cardRaw.filter { it.isLetterOrDigit() }
+        if (alnum.isEmpty()) return null
+        val last = alnum.last().uppercaseChar()
+        return if (last in setOf('S', 'H', 'D', 'C')) last else null
+    }
 
     private fun validateHand(hand: List<String>, baseValue: String): Boolean {
         for (card in hand) {
@@ -177,6 +193,14 @@ class GameController(private val logger: ((String) -> Unit)? = null) {
         log("Hand validated.")
         return true
     }
+
+    fun sortHand(hand: List<String>): List<String> {
+        return hand.sortedWith(compareBy(
+            { idx -> getCardIndex(idx).takeIf { it >= 0 } ?: Int.MAX_VALUE },
+            { getSuitChar(it) ?: 'Z' }
+        ))
+    }
+
 
     fun removePlayedCards(hand: MutableList<String>, playedHand: List<String>) {
         for (card in playedHand) {
