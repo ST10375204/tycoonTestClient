@@ -70,14 +70,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnPass.setOnClickListener {
-            val pid = viewModel.playerId.value
-            if (pid == null) {
-                log("⚠️ No playerId yet")
-                return@setOnClickListener
-            }
-            binding.edtRoomId.text.toString().toIntOrNull()?.let { sessionId ->
-                viewModel.sendPlay(sessionId, emptyList(), viewModel.hand.value?.size ?: 0)
-            }
+          handlePassButtonClick()
         }
 
         binding.btnPlay.setOnClickListener {
@@ -127,6 +120,19 @@ class MainActivity : AppCompatActivity() {
         viewModel.currentTurn.observe(this) { updateTurnUI() }
         viewModel.log.observe(this) { msg -> binding.txtLog.append(msg + "\n") }
         viewModel.lastMessage.observe(this) { msg ->  binding.txtMessages.text = msg }
+
+        viewModel.counts.observe(this) { counts ->
+            val pid = viewModel.playerId.value
+            val order = viewModel.turnOrder.value ?: emptyList()
+            binding.gameView.setPlayersFromTurnOrder(order, pid, counts)
+
+            counts.forEach { (playerId, count) ->
+                if (playerId != pid) {
+                    binding.gameView.setOtherPlayerCount(playerId, count)
+                }
+            }
+        }
+
 
         viewModel.roundMessage.observe(this) { msg ->
             when (msg) {
@@ -189,6 +195,8 @@ class MainActivity : AppCompatActivity() {
     /* --------------------
        Actions
     -------------------- */
+
+
     private fun handlePlayButtonClick(selectedFromView: List<String>) {
         val sessionId = binding.edtRoomId.text.toString().toIntOrNull()
         if (sessionId == null) {
@@ -207,7 +215,7 @@ class MainActivity : AppCompatActivity() {
             val remaining = currentHand.size - selectedFromView.size
 
             // Send play to server
-            viewModel.sendPlay(sessionId, selectedFromView, remaining)
+            viewModel.tryPlay(sessionId, selectedFromView, rules)
 
             // Remove played cards locally
             val newHand = currentHand.toMutableList().apply {
@@ -223,6 +231,15 @@ class MainActivity : AppCompatActivity() {
             log("Denied by controller")
         }
         binding.gameView.clearSelection()
+    }
+
+    private fun handlePassButtonClick(){
+        val sessionId = binding.edtRoomId.text.toString().toIntOrNull()
+        if (sessionId == null) {
+            log("⚠️ Need session")
+            return
+        }
+        viewModel.sendPass(sessionId)
     }
 
     /* --------------------
@@ -242,6 +259,7 @@ class MainActivity : AppCompatActivity() {
         println(line)
         binding.txtLog.append(line + "\n")
     }
+
 
     /* --------------------
         Game Helpers

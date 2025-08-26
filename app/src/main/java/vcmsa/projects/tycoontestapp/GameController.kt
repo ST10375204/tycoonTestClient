@@ -15,14 +15,15 @@ class GameController(private val logger: ((String) -> Unit)? = null) {
             arrayOf("3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A", "2", "Joker")
 
     /**
-     * Robustly parse the card's rank value.
-     * Returns normalized rank strings like "3","4",...,"10","J","Q","K","A","2","Joker".
-     *
-     * Accepts a variety of inputs:
-     *  - "10H", "10h", "10_H", "10-H" => "10"
-     *  - "QS", "qS" => "Q"
-     *  - "RJ","BJ","jrj","joker" => "Joker"
-     *  - "TH" or "T H" will treat 'T' as '10'
+      Robustly parse the card's rank value.
+      Returns normalized rank strings like "3","4",...,"10","J","Q","K","A","2","Joker".
+
+      Accepts a variety of inputs:
+      - "10H", "10h", "10_H", "10-H" => "10"
+       - "QS", "qS" => "Q"
+      - "RJ","BJ","jrj","joker" => "Joker"
+
+      - "TH" or "T H" will treat 'T' as '10'
      */
     private fun getCardValue(cardRaw: String?): String {
         if (cardRaw == null) return "Unknown"
@@ -154,6 +155,11 @@ class GameController(private val logger: ((String) -> Unit)? = null) {
             ?.let { getCardValue(it) }
             ?: "Error"
 
+        if (!validateHand(playedHand, basePlayed)) {
+            log("Invalid hand: ${playedHand.joinToString()} vs base $basePlayed")
+            return false
+        }
+
         log("Valid hand played, Base = $basePlayed")
         log("Base Played: $basePlayed, Base Pot: $basePot")
         log("Revolution mode: $revolution")
@@ -166,10 +172,13 @@ class GameController(private val logger: ((String) -> Unit)? = null) {
             log("Index lookup failed for multi-card comparison.")
             return false
         }
+
         val isValid = if (revolution) playedIndex < potIndex else playedIndex > potIndex
-        log("Comparing played to pot: $playedIndex ${if (revolution) "<" else ">"} $potIndex = $isValid")
+        log("Multi-card compare: played=$basePlayed ($playedIndex), pot=$basePot ($potIndex), rev=$revolution → $isValid")
+
         return isValid
     }
+
 
     private fun getBaseValue(cards: List<String>): String {
         val baseCard = cards.firstOrNull { getCardValue(it) != "Joker" } ?: "Joker"
@@ -193,6 +202,8 @@ class GameController(private val logger: ((String) -> Unit)? = null) {
         log("Hand validated.")
         return true
     }
+//me, vv, avi karan
+    //8stop edge case, if 1t card in pot
 
     fun sortHand(hand: List<String>): List<String> {
         return hand.sortedWith(compareBy(
