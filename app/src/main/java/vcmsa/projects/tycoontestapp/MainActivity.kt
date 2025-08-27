@@ -70,7 +70,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnPass.setOnClickListener {
-          handlePassButtonClick()
+            handlePassButtonClick()
         }
 
         binding.btnPlay.setOnClickListener {
